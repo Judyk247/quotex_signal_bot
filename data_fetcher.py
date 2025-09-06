@@ -24,7 +24,7 @@ def setup_debug_logger():
 
 # -----------------------------
 # Quotex Socket.IO URL
-QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket"
+QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
 
 # SocketIO instance injected from app.py
 socketio_instance = None
