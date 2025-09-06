@@ -1,5 +1,6 @@
 import threading
 import logging
+from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -39,11 +40,8 @@ def start_background_workers():
     """Start Quotex Socket.IO worker + data fetcher."""
     logging.info("🔌 Connecting to Quotex via Python Socket.IO...")
 
-    threading.Thread(
-        target=start_quotex_ws,
-        args=(socketio, latest_signals),
-        daemon=True
-    ).start()
+    # Inject Flask SocketIO instance into Quotex WS
+    start_quotex_ws(socketio)
 # -----------------------------
 
 
