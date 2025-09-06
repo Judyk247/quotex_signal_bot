@@ -16,15 +16,13 @@ def setup_debug_logger():
     """Enable full debug logging for Socket.IO and our app."""
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
-
     logging.getLogger("socketio").setLevel(logging.DEBUG)
     logging.getLogger("engineio").setLevel(logging.DEBUG)
-
     logging.debug("[DEBUG] Debug logger initialized")
 
 # -----------------------------
 # Quotex Socket.IO URL
-QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket"
+QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
 
 # SocketIO instance injected from app.py
 socketio_instance = None
@@ -63,29 +61,18 @@ def connect():
         }
     ]
     try:
-        sio.emit("message", auth_payload)  # Socket.IO '42' style message
+        sio.emit("message", auth_payload)
         logging.info("[AUTH] Sent authorization payload ✅")
     except Exception as e:
         logging.error(f"[AUTH ERROR] Failed to send auth payload: {e}")
 
+# -----------------------------
 @sio.on("candle")
 def handle_candle(data):
-    """
-    data = {
-        "asset": "USDINR_otc",
-        "period": 60,
-        "open": ...,
-        "high": ...,
-        "low": ...,
-        "close": ...,
-        "time": ...
-    }
-    """
     try:
         asset = data["asset"]
         period = data["period"]
 
-        # Only process admin-selected symbols and timeframes
         selected_symbols = get_dynamic_symbols()
         selected_timeframes = get_timeframes()
 
@@ -130,7 +117,6 @@ def handle_candle(data):
 # -----------------------------
 @sio.on("*")
 def catch_all(event, data=None):
-    """Catch-all debug logger for every incoming event."""
     try:
         logging.debug(f"[CATCH-ALL] Event: {event} | Data: {str(data)[:500]}")
     except Exception as e:
@@ -138,10 +124,6 @@ def catch_all(event, data=None):
 
 # -----------------------------
 def sync_subscriptions():
-    """
-    Dynamically subscribe/unsubscribe symbols and timeframes
-    based on admin dashboard selections.
-    """
     global subscribed
 
     selected_symbols = set(get_dynamic_symbols())
@@ -175,45 +157,44 @@ def sync_subscriptions():
             del subscribed[symbol]
 
 # -----------------------------
-# Periodically sync subscriptions
 def subscription_sync_worker():
     while True:
         try:
             sync_subscriptions()
         except Exception as e:
             logging.error(f"[SYNC ERROR] {e}")
-        time.sleep(5)  # check every 5 seconds
+        time.sleep(5)
 
 # -----------------------------
 def run_quotex_ws(socketio_from_app):
-    """Connect to Quotex and process data for selected symbols/timeframes."""
     global socketio_instance
     socketio_instance = socketio_from_app
 
-    try:
-        logging.info(f"🔌 Connecting to Quotex Socket.IO...")
-        sio.connect(
-            QUOTEX_WS_URL,
-            transports=["websocket"],
-            headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Origin": "https://qxbroker.com",
-            }
-        )
+    while True:
+        try:
+            logging.info("🔌 Connecting to Quotex Socket.IO...")
+            sio.connect(
+                QUOTEX_WS_URL,
+                transports=["websocket"],
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Origin": "https://qxbroker.com",
+                    "Cookie": f"session={QUOTEX_SESSION_TOKEN}"
+                }
+            )
 
-        # Start subscription sync worker
-        threading.Thread(target=subscription_sync_worker, daemon=True).start()
+            # Start subscription sync worker
+            threading.Thread(target=subscription_sync_worker, daemon=True).start()
 
-        sio.wait()
-    except Exception as e:
-        logging.error(f"[FATAL ERROR] {e}")
-        logging.info("⏳ Reconnecting in 5 seconds...")
-        time.sleep(5)
-        run_quotex_ws(socketio_from_app)
+            sio.wait()
+        except Exception as e:
+            logging.error(f"[FATAL ERROR] {e}")
+            logging.info("⏳ Reconnecting in 5 seconds...")
+            time.sleep(5)
 
+# -----------------------------
 def start_quotex_ws(socketio_from_app):
-    """Start Quotex Socket.IO in a separate thread."""
     t = threading.Thread(
         target=run_quotex_ws,
         args=(socketio_from_app,),
@@ -223,7 +204,6 @@ def start_quotex_ws(socketio_from_app):
 
 # -----------------------------
 def get_dynamic_symbols_list():
-    """Return the latest dynamic symbols"""
     return get_dynamic_symbols()
 
 # -----------------------------
