@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quotex Trading Dashboard</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="/static/dashboard.js" defer></script>
+</head>
+<body>
+    <h1>📊 Quotex Trading Signals Dashboard</h1>
+
+    <!-- Last Update -->
+    <div id="last-update">Last updated: --</div>
+
+    <!-- Signals Table -->
+    <table id="signals-table">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Signal</th>
+                <th>Timeframe</th>
+                <th>Signal Time</th>
+                <th>Received</th>
+                <th>Confidence (%)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Signals populated dynamically -->
+        </tbody>
+    </table>
+</body>
+</html>
