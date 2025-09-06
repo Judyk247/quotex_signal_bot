@@ -169,32 +169,32 @@ def run_quotex_ws(socketio_from_app):
     socketio_instance = socketio_from_app
 
     while True:
-    try:
-        logging.info("🔌 Connecting to Quotex Socket.IO...")
+        try:
+            logging.info("🔌 Connecting to Quotex Socket.IO...")
 
-        sio.connect(
-            "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket",
-            transports=["websocket"],
-            headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Origin": "https://qxbroker.com",
-                "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
-            }
-        )
+            sio.connect(
+                "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket",
+                transports=["websocket"],
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Origin": "https://qxbroker.com",
+                    "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
+                }
+            )
 
-        logging.info("[AUTH] Connected to Quotex WebSocket ✅")
+            logging.info("[AUTH] Connected to Quotex WebSocket ✅")
 
-        # Start subscription sync worker
-        threading.Thread(target=subscription_sync_worker, daemon=True).start()
+            # Start subscription sync worker
+            threading.Thread(target=subscription_sync_worker, daemon=True).start()
 
-        # Wait indefinitely for events
-        sio.wait()
+            # Wait indefinitely for events
+            sio.wait()
 
-    except Exception as e:
-        logging.error(f"[FATAL ERROR] {e}")
-        logging.info("⏳ Reconnecting in 5 seconds...")
-        time.sleep(5)
+        except Exception as e:
+            logging.error(f"[FATAL ERROR] {e}")
+            logging.info("⏳ Reconnecting in 5 seconds...")
+            time.sleep(5)
 
 # -----------------------------
 def start_quotex_ws(socketio_from_app):
