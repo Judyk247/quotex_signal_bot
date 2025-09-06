@@ -22,7 +22,7 @@ def setup_debug_logger():
 
 # -----------------------------
 # Quotex Socket.IO URL
-QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=4&transport=websocket"
+QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket"
 
 # SocketIO instance injected from app.py
 socketio_instance = None
@@ -45,26 +45,42 @@ subscribed = {}  # {symbol: set(periods)}
 # -----------------------------
 @sio.event
 def connect():
-    logging.info("[CONNECT] Connected to Quotex Socket.IO")
+    logging.info("[CONNECT] Connecting to Quotex Socket.IO...")
 
     if not QUOTEX_SESSION_TOKEN:
         logging.error("[AUTH ERROR] No QUOTEX_SESSION_TOKEN found in .env")
         return
 
-    # Send authorization payload
-    auth_payload = [
-        "authorization",
-        {
-            "session": QUOTEX_SESSION_TOKEN,
-            "isDemo": 0,        # 0 = live, 1 = demo
-            "tournamentId": 0
-        }
-    ]
     try:
+        # Establish WebSocket connection
+        sio.connect(
+            "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket",
+            transports=["websocket"],
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Origin": "https://qxbroker.com",
+                "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
+            }
+        )
+
+        # Send authorization payload
+        auth_payload = [
+            "authorization",
+            {
+                "session": QUOTEX_SESSION_TOKEN,
+                "isDemo": 0,        # 0 = live, 1 = demo
+                "tournamentId": 0
+            }
+        ]
         sio.emit("message", auth_payload)
         logging.info("[AUTH] Sent authorization payload ✅")
+
     except Exception as e:
-        logging.error(f"[AUTH ERROR] Failed to send auth payload: {e}")
+        logging.error(f"[FATAL ERROR] {e}")
+        logging.info("⏳ Reconnecting in 5 seconds...")
+        time.sleep(5)
+        connect()  # Retry
 
 # -----------------------------
 @sio.on("candle")
