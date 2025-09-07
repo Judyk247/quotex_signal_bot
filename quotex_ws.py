@@ -170,6 +170,11 @@ def run_quotex_ws(socketio_from_app):
 
     while True:
         try:
+            if sio.connected:
+                logging.info("⚡ Already connected to Quotex, skipping reconnect...")
+                time.sleep(5)
+                continue
+
             logging.info("🔌 Connecting to Quotex Socket.IO...")
 
             sio.connect(
@@ -181,8 +186,7 @@ def run_quotex_ws(socketio_from_app):
                     "Origin": "https://qxbroker.com",
                     "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
                 },
-                socketio_path='socket.io',  # Correct place for engine.io path
-                wait_timeout=10
+                socketio_path='socket.io'  # Correct engine.io path
             )
 
             logging.info("[AUTH] Connected to Quotex WebSocket ✅")
