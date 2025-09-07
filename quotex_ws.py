@@ -15,6 +15,13 @@ from telegram_utils import send_telegram_message
 from config import get_dynamic_symbols, get_timeframes, add_candle
 
 # -----------------------------
+def setup_debug_logger():
+    """Enable full debug logging for Socket.IO and our app."""
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    logging.getLogger("socketio").setLevel(logging.DEBUG)
+    logging.getLogger("engineio").setLevel(logging.DEBUG)
+    logging.debug("[DEBUG] Debug logger initialized")
 # SocketIO client
 sio = socketio.Client(
     reconnection=False  # we handle reconnection manually
