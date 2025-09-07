@@ -5,16 +5,13 @@ import logging
 import socketio
 from datetime import datetime, timezone
 import pandas as pd
-import importlib
-import os
-
-# Local modules
-import credentials  # will be reloaded dynamically
+from credentials import QUOTEX_SESSION_TOKEN
 from strategy import analyze_candles
 from telegram_utils import send_telegram_message
 from config import get_dynamic_symbols, get_timeframes, add_candle
 
 # -----------------------------
+# Debug logger setup
 def setup_debug_logger():
     """Enable full debug logging for Socket.IO and our app."""
     root_logger = logging.getLogger()
@@ -22,73 +19,51 @@ def setup_debug_logger():
     logging.getLogger("socketio").setLevel(logging.DEBUG)
     logging.getLogger("engineio").setLevel(logging.DEBUG)
     logging.debug("[DEBUG] Debug logger initialized")
-# SocketIO client
-sio = socketio.Client(
-    reconnection=False  # we handle reconnection manually
-)
-
-socketio_instance = None
-market_data = {}
-subscribed = {}
-
-_last_creds_snapshot = None  # Track last loaded credentials
 
 # -----------------------------
-def load_creds():
-    """Reload credentials.py dynamically each reconnect."""
-    global _last_creds_snapshot
-    importlib.reload(credentials)
-    creds = {
-        "SESSION": credentials.QUOTEX_SESSION_TOKEN,
-        "IS_DEMO": credentials.QUOTEX_IS_DEMO,
-        "TOURNAMENT_ID": credentials.QUOTEX_TOURNAMENT_ID,
-        "USER_AGENT": credentials.QUOTEX_USER_AGENT,
-        "ORIGIN": credentials.QUOTEX_ORIGIN,
-        "COOKIE": credentials.QUOTEX_COOKIE,
-        "WS_URL": credentials.QUOTEX_WS_URL,
-    }
-    return creds
+# Quotex Socket.IO URL (no query parameters)
+QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/"
 
-def creds_changed(new_creds):
-    """Check if credentials.py has been updated."""
-    global _last_creds_snapshot
-    if _last_creds_snapshot is None:
-        _last_creds_snapshot = new_creds
-        return False
-    if _last_creds_snapshot != new_creds:
-        logging.info("[CREDS] Detected credentials.py update 🔄 Forcing reconnect...")
-        _last_creds_snapshot = new_creds
-        return True
-    return False
+# SocketIO instance injected from app.py
+socketio_instance = None
+
+# Python Socket.IO client (updated with correct path and debug level)
+sio = socketio.Client(
+    logger=logging.getLogger("socketio"),
+    engineio_logger=logging.getLogger("engineio"),
+    reconnection=True,
+    reconnection_attempts=0,
+    reconnection_delay=5
+)
+
+# Store market data locally
+market_data = {}
+# Track currently subscribed symbols/timeframes
+subscribed = {}  # {symbol: set(periods)}
 
 # -----------------------------
 @sio.event
 def connect():
-    logging.info("[CONNECT] Connected to Quotex ✅")
+    logging.info("[CONNECT] Connected to Quotex Socket.IO")
 
-    creds = load_creds()
-    if not creds["SESSION"]:
-        logging.error("[AUTH ERROR] No QUOTEX_SESSION_TOKEN in credentials.py")
+    if not QUOTEX_SESSION_TOKEN:
+        logging.error("[AUTH ERROR] No QUOTEX_SESSION_TOKEN found in .env")
         return
 
     try:
+        # Send authorization payload after connection
         auth_payload = [
             "authorization",
             {
-                "session": creds["SESSION"],
-                "isDemo": creds["IS_DEMO"],
-                "tournamentId": creds["TOURNAMENT_ID"]
+                "session": QUOTEX_SESSION_TOKEN,
+                "isDemo": 0,        # 0 = live, 1 = demo
+                "tournamentId": 0
             }
         ]
         sio.emit("message", auth_payload)
         logging.info("[AUTH] Sent authorization payload ✅")
     except Exception as e:
-        logging.error(f"[AUTH ERROR] Failed: {e}")
-
-@sio.event
-def disconnect():
-    logging.warning("[DISCONNECT] Lost connection ⚠️")
-    logging.info("⏳ Will retry automatically...")
+        logging.error(f"[AUTH ERROR] Failed to send auth payload: {e}")
 
 # -----------------------------
 @sio.on("candle")
@@ -97,14 +72,19 @@ def handle_candle(data):
         asset = data["asset"]
         period = data["period"]
 
-        if asset not in get_dynamic_symbols() or period not in get_timeframes():
+        selected_symbols = get_dynamic_symbols()
+        selected_timeframes = get_timeframes()
+
+        if asset not in selected_symbols or period not in selected_timeframes:
             return
 
+        # Store candle
         add_candle(asset, period, data)
-        candles = market_data.setdefault(asset, {}).setdefault("candles", {}).setdefault(period, [])
-        candles.append(data)
+        candle_list = market_data.setdefault(asset, {}).setdefault("candles", {}).setdefault(period, [])
+        candle_list.append(data)
 
-        df = pd.DataFrame(candles)[["open", "high", "low", "close"]]
+        # Analyze candle
+        df = pd.DataFrame(candle_list)[["open", "high", "low", "close"]]
         result = analyze_candles(df)
 
         if result and result.get("signal"):
@@ -116,51 +96,65 @@ def handle_candle(data):
                 "timeframe": period
             }
 
+            # Emit to dashboard
             if socketio_instance:
                 socketio_instance.emit("new_signal", signal_obj)
 
+            # Store latest signals (max 50)
             latest_signals = getattr(socketio_instance, "latest_signals", [])
             latest_signals.append(signal_obj)
             if len(latest_signals) > 50:
                 latest_signals.pop(0)
             socketio_instance.latest_signals = latest_signals
 
+            # Send Telegram alert
             send_telegram_message(signal_obj)
 
     except Exception as e:
         logging.error(f"[CANDLE ERROR] {e}")
 
 # -----------------------------
+@sio.on("*")
+def catch_all(event, data=None):
+    try:
+        logging.debug(f"[CATCH-ALL] Event: {event} | Data: {str(data)[:500]}")
+    except Exception as e:
+        logging.error(f"[CATCH-ALL ERROR] {e}")
+
+# -----------------------------
 def sync_subscriptions():
     global subscribed
-    symbols = set(get_dynamic_symbols())
-    periods = set(get_timeframes())
+    selected_symbols = set(get_dynamic_symbols())
+    selected_timeframes = set(get_timeframes())
 
-    for symbol in symbols:
-        subs = subscribed.get(symbol, set())
-        for p in periods:
-            if p not in subs:
+    # Subscribe new symbols/timeframes
+    for symbol in selected_symbols:
+        periods = subscribed.get(symbol, set())
+        for period in selected_timeframes:
+            if period not in periods:
                 try:
-                    sio.emit("subscribe", {"type": "candles", "asset": symbol, "period": p})
-                    logging.info(f"[SUBSCRIBE] {symbol} {p}s")
-                    subs.add(p)
+                    sio.emit("subscribe", {"type": "candles", "asset": symbol, "period": period})
+                    logging.info(f"[SUBSCRIBE] Subscribed {symbol} to {period}s candles")
+                    periods.add(period)
                 except Exception as e:
-                    logging.error(f"[SUBSCRIBE ERROR] {symbol} {p}: {e}")
-        subscribed[symbol] = subs
+                    logging.error(f"[SUBSCRIBE ERROR] {symbol} {period}: {e}")
+        subscribed[symbol] = periods
 
+    # Unsubscribe removed symbols or periods
     for symbol in list(subscribed.keys()):
-        subs = subscribed[symbol]
-        for p in list(subs):
-            if symbol not in symbols or p not in periods:
+        periods = subscribed[symbol]
+        for period in list(periods):
+            if symbol not in selected_symbols or period not in selected_timeframes:
                 try:
-                    sio.emit("unsubscribe", {"type": "candles", "asset": symbol, "period": p})
-                    logging.info(f"[UNSUBSCRIBE] {symbol} {p}s")
-                    subs.remove(p)
+                    sio.emit("unsubscribe", {"type": "candles", "asset": symbol, "period": period})
+                    logging.info(f"[UNSUBSCRIBE] Unsubscribed {symbol} from {period}s candles")
+                    periods.remove(period)
                 except Exception as e:
-                    logging.error(f"[UNSUBSCRIBE ERROR] {symbol} {p}: {e}")
-        if not subs:
+                    logging.error(f"[UNSUBSCRIBE ERROR] {symbol} {period}: {e}")
+        if not periods:
             del subscribed[symbol]
 
+# -----------------------------
 def subscription_sync_worker():
     while True:
         try:
@@ -176,41 +170,51 @@ def run_quotex_ws(socketio_from_app):
 
     while True:
         try:
-            creds = load_creds()
-            if creds_changed(creds) and sio.connected:
-                # Force reconnect if creds updated
-                logging.info("[CREDS] Forcing reconnect with new credentials...")
-                sio.disconnect()
-
             if sio.connected:
+                logging.info("⚡ Already connected to Quotex, skipping reconnect...")
                 time.sleep(5)
                 continue
 
-            logging.info("🔌 Connecting to Quotex WebSocket...")
+            logging.info("🔌 Connecting to Quotex Socket.IO...")
 
             sio.connect(
-                creds["WS_URL"],
+                QUOTEX_WS_URL,
                 transports=["websocket"],
                 headers={
-                    "User-Agent": creds["USER_AGENT"],
-                    "Origin": creds["ORIGIN"],
-                    "Cookie": creds["COOKIE"]
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Origin": "https://qxbroker.com",
+                    "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
                 },
-                socketio_path="socket.io"
+                socketio_path='socket.io'  # Correct engine.io path
             )
 
+            logging.info("[AUTH] Connected to Quotex WebSocket ✅")
+
+            # Start subscription sync worker
             threading.Thread(target=subscription_sync_worker, daemon=True).start()
+
+            # Wait indefinitely for events
             sio.wait()
 
         except Exception as e:
-            logging.error(f"[CONNECTION ERROR] {e}")
-            logging.info("⏳ Retrying in 5 seconds...")
+            logging.error(f"[FATAL ERROR] {e}")
+            logging.info("⏳ Reconnecting in 5 seconds...")
             time.sleep(5)
 
 # -----------------------------
 def start_quotex_ws(socketio_from_app):
-    threading.Thread(
+    t = threading.Thread(
         target=run_quotex_ws,
         args=(socketio_from_app,),
         daemon=True
-    ).start()
+    )
+    t.start()
+
+# -----------------------------
+def get_dynamic_symbols_list():
+    return get_dynamic_symbols()
+
+# -----------------------------
+if __name__ == "__main__":
+    logging.info("⚠️ Run this only from app.py, not directly.")
