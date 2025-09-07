@@ -27,13 +27,15 @@ QUOTEX_WS_URL = "wss://ws2.qxbroker.com/socket.io/"
 # SocketIO instance injected from app.py
 socketio_instance = None
 
-# Python Socket.IO client
+# Python Socket.IO client (updated with correct path and debug level)
 sio = socketio.Client(
     logger=logging.getLogger("socketio"),
     engineio_logger=logging.getLogger("engineio"),
     reconnection=True,
     reconnection_attempts=0,
-    reconnection_delay=5
+    reconnection_delay=5,
+    engineio_path='socket.io',
+    engineio_logger_level='DEBUG'
 )
 
 # Store market data locally
@@ -173,14 +175,16 @@ def run_quotex_ws(socketio_from_app):
             logging.info("🔌 Connecting to Quotex Socket.IO...")
 
             sio.connect(
-                "wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket",
+                QUOTEX_WS_URL,
                 transports=["websocket"],
                 headers={
                     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                                   "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                     "Origin": "https://qxbroker.com",
                     "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
-                }
+                },
+                socketio_path='socket.io',  # must match server
+                wait_timeout=10
             )
 
             logging.info("[AUTH] Connected to Quotex WebSocket ✅")
