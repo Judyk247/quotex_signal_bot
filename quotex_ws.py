@@ -33,9 +33,7 @@ sio = socketio.Client(
     engineio_logger=logging.getLogger("engineio"),
     reconnection=True,
     reconnection_attempts=0,
-    reconnection_delay=5,
-    engineio_path='socket.io',
-    engineio_logger_level='DEBUG'
+    reconnection_delay=5
 )
 
 # Store market data locally
@@ -183,7 +181,7 @@ def run_quotex_ws(socketio_from_app):
                     "Origin": "https://qxbroker.com",
                     "Cookie": f"session={QUOTEX_SESSION_TOKEN}; activeAccount=live"
                 },
-                socketio_path='socket.io',  # must match server
+                socketio_path='socket.io',  # Correct place for engine.io path
                 wait_timeout=10
             )
 
