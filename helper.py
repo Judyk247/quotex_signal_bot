@@ -218,3 +218,4 @@ def get_dynamic_symbols_list():
 # -----------------------------
 if __name__ == "__main__":
     logging.info("⚠️ Run this only from app.py, not directly.")
+    
