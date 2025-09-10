@@ -3,7 +3,7 @@ setuptools==68.2.2
 wheel==0.42.0
 
 # Use newer, compatible versions
-pandas==2.0.3  # Updated from 1.5.3
+pandas==2.2.1  # Updated from 1.5.3
 numpy==2.0.0   # Updated from 1.24.3
 cython==3.0.8  # Added for compatibility
 
