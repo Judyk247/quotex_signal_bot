@@ -1,11 +1,6 @@
-# Use pre-built wheels for Python 3.13 compatibility
---only-binary :all:
-
-# Core dependencies with compatible versions
 pandas==2.2.3
 numpy==2.0.0
 websockets==11.0.3
-python-dotenv==1.0.0
 Flask==2.3.3
 Flask-SocketIO==5.3.6
 python-engineio==4.7.1
@@ -14,10 +9,4 @@ eventlet==0.33.3
 aiohttp==3.8.5
 requests==2.31.0
 gunicorn==21.2.0
-setuptools==68.2.2
-wheel==0.42.0
-talib-binary==0.1.0
-
-# TA-Lib alternative (pure Python)
-# If ta-lib doesn't work, use this instead:
-# talib-binary==0.1.0
+python-dotenv==1.0.0
