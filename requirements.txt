@@ -1,12 +1,14 @@
+# Use compatible versions for Python 3.13
 setuptools==68.2.2
-wheel==0.41.2
-pip==23.3.1
---no-binary :all:
+wheel==0.42.0
 
-# Your existing dependencies
+# Use newer, compatible versions
+pandas==2.0.3  # Updated from 1.5.3
+numpy==2.0.0   # Updated from 1.24.3
+cython==3.0.8  # Added for compatibility
+
+# Other dependencies
 websockets==11.0.3
-pandas==1.5.3
-numpy==1.24.3
 ta-lib==0.4.0
 python-dotenv==1.0.0
 Flask==2.3.3
@@ -17,3 +19,4 @@ eventlet==0.33.3
 aiohttp==3.8.5
 requests==2.31.0
 gunicorn==21.2.0
+typing-extensions==4.8.0
