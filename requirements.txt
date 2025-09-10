@@ -1,7 +1,7 @@
 websockets==11.0.3
 pandas==1.5.3
 numpy==1.24.3
-TA-Lib==0.4.28
+ta-lib==0.4.0  # Use this instead of TA-Lib (pure Python version)
 python-dotenv==1.0.0
 Flask==2.3.3
 Flask-SocketIO==5.3.6
@@ -10,3 +10,4 @@ python-socketio==5.8.0
 eventlet==0.33.3
 aiohttp==3.8.5
 requests==2.31.0
+gunicorn==21.2.0  # Required for Render deployment
