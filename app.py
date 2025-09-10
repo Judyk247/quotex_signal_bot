@@ -1,124 +1,84 @@
-import threading
-import logging
-from datetime import datetime
-from flask import Flask, render_template, jsonify, request
-from flask_cors import CORS
+from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO
-from strategy import analyze_candles
-from telegram_utils import send_telegram_message
-from data_fetcher import get_dynamic_symbols
-from config import TIMEFRAMES, TELEGRAM_CHAT_IDS, update_symbols
+import threading
+import json
+from datetime import datetime
 
-# 👇 Import Quotex Socket.IO WebSocket
-from quotex_ws import start_quotex_ws, setup_debug_logger
-
-setup_debug_logger()
-
-# Flask app setup
 app = Flask(__name__)
-CORS(app)
-app.config["TEMPLATES_AUTO_RELOAD"] = True
-socketio = SocketIO(app, async_mode="eventlet")
+app.config['SECRET_KEY'] = 'your_secret_key'
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
-latest_signals = []  # Store latest signals for dashboard
-MAX_SIGNALS = 50     # Keep only the last 50
-
-# Admin-selected symbols/timeframes (updated from dashboard)
-selected_symbols = []      # ["EURUSD_otc", ...]
-selected_timeframes = []   # [60, 180, 300]
-
-
-# -----------------------------
-# Background worker manager
-def start_background_workers():
-    """Start Quotex Socket.IO worker + data fetcher."""
-    logging.info("🔌 Connecting to Quotex via Python Socket.IO...")
-
-    # Inject Flask SocketIO instance into Quotex WS
-    start_quotex_ws(socketio)
-# -----------------------------
-
-
-# -----------------------------
-# Dashboard routes
-@app.route("/")
-def dashboard():
-    logging.info("Rendering dashboard page")
-    return render_template("dashboard.html")
-
-
-@app.route("/signals_data")
-def signals_data():
-    signals_out = latest_signals if latest_signals else [
-        {
-            "symbol": "-",
-            "signal": "No signals yet",
-            "confidence": 0,
-            "time": "-",
-            "timeframe": "-"
+class Dashboard:
+    def __init__(self):
+        self.signals = []
+        self.performance = {
+            'total_signals': 0,
+            'winning_signals': 0,
+            'losing_signals': 0,
+            'total_profit': 0
         }
-    ]
-    return jsonify({
-        "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "signals": signals_out,
-        "mode": "LIVE"
-    })
+        self.connected_clients = 0
+    
+    def add_signal(self, signal):
+        """Add a new signal to dashboard"""
+        formatted_signal = {
+            'id': len(self.signals) + 1,
+            'asset': signal.get('asset', 'Unknown'),
+            'direction': signal.get('signal', 'hold').upper(),
+            'confidence': signal.get('confidence', 0),
+            'timestamp': signal.get('timestamp', datetime.now()).strftime('%Y-%m-%d %H:%M:%S'),
+            'timeframe': signal.get('timeframe', ''),
+            'type': signal.get('type', 'unknown')
+        }
+        
+        self.signals.insert(0, formatted_signal)
+        self.signals = self.signals[:50]  # Keep only last 50 signals
+        
+        self.performance['total_signals'] += 1
+        
+        # Broadcast to all connected clients
+        socketio.emit('new_signal', formatted_signal)
+        socketio.emit('performance_update', self.performance)
+    
+    def update_performance(self, is_win, profit):
+        """Update performance metrics"""
+        if is_win:
+            self.performance['winning_signals'] += 1
+        else:
+            self.performance['losing_signals'] += 1
+        
+        self.performance['total_profit'] += profit
+        socketio.emit('performance_update', self.performance)
 
+# Global dashboard instance
+dashboard = Dashboard()
 
-@app.route("/symbols")
-def symbols():
-    """Return available symbols and timeframes for admin selection."""
-    symbols_list = get_dynamic_symbols()  # Fetch dynamically from Quotex or cached
-    return jsonify({"symbols": symbols_list, "timeframes": TIMEFRAMES})
+@app.route('/')
+def index():
+    return render_template('index.html')
 
+@app.route('/api/signals')
+def get_signals():
+    return jsonify(dashboard.signals)
 
-@app.route("/update_symbols", methods=["POST"])
-def update_symbols_endpoint():
-    """
-    Admin posts new symbols/timeframes.
-    Example payload: {"symbols": ["EURUSD_otc","USDJPY_otc"], "timeframes": [60,180,300]}
-    """
-    global selected_symbols, selected_timeframes
+@app.route('/api/performance')
+def get_performance():
+    return jsonify(dashboard.performance)
 
-    data = request.json
-    new_symbols = data.get("symbols", [])
-    new_timeframes = data.get("timeframes", [])
+@socketio.on('connect')
+def handle_connect():
+    dashboard.connected_clients += 1
+    print(f"Client connected. Total clients: {dashboard.connected_clients}")
 
-    # Update shared references
-    selected_symbols = new_symbols
-    selected_timeframes = new_timeframes
+@socketio.on('disconnect')
+def handle_disconnect():
+    dashboard.connected_clients -= 1
+    print(f"Client disconnected. Total clients: {dashboard.connected_clients}")
 
-    # Update config (for global access)
-    update_symbols(new_symbols)
+def run_dashboard():
+    """Run the Flask dashboard"""
+    print("Starting dashboard on http://localhost:5000")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
-    # Notify Quotex WS dynamically
-    socketio.emit("symbols_update", {"symbols": new_symbols, "timeframes": new_timeframes})
-    logging.info(f"✅ Symbols/timeframes updated dynamically: {new_symbols} | {new_timeframes}")
-
-    return jsonify({"status": "success", "symbols": new_symbols, "timeframes": new_timeframes})
-# -----------------------------
-
-
-# -----------------------------
-# Emit signals immediately to new dashboard clients
-@socketio.on("connect")
-def on_connect():
-    logging.info("Client connected, sending current signals...")
-    for sig in latest_signals:
-        socketio.emit("new_signal", sig)
-# -----------------------------
-
-
-if __name__ == "__main__":
-    logging.info("Starting Flask-SocketIO app on 0.0.0.0:5000")
-
-    # ✅ Start background workers for Quotex
-    start_background_workers()
-
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+if __name__ == '__main__':
+    run_dashboard()
