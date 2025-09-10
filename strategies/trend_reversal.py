@@ -21,7 +21,7 @@ class TrendReversalStrategy:
         df['ema_150'] = talib.EMA(df['close'], timeperiod=150)
         
         # Stochastic Oscillator
-        df['stoch_k'], df['stoch_d'] = calculate_stochastic(
+        df['stoch_k'], df['stoch_d'] = talib.STOCH(
             df['high'], df['low'], df['close'],
             fastk_period=14, slowk_period=3, slowk_matype=0, 
             slowd_period=3, slowd_matype=0
