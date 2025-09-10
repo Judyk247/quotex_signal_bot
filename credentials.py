@@ -1,11 +1,10 @@
-# credentials.py
-
 import os
+from dotenv import load_dotenv
 
-# Base WebSocket URL for Quotex
-QUOTEX_WS_URL = os.getenv("QUOTEX_WS_URL")
+load_dotenv()
 
-# Auth/session credentials (replace with your own or set via env vars)
-QUOTEX_SESSION_TOKEN = os.getenv("QUOTEX_SESSION_TOKEN", "")
-QUOTEX_USER_ID = os.getenv("QUOTEX_USER_ID", "")
-QUOTEX_ACCOUNT_URL = os.getenv("QUOTEX_ACCOUNT_URL", "https://qxbroker.com/en/trade")
+class Credentials:
+    SESSION_ID = os.getenv('SESSION_ID', '')
+    IS_DEMO = int(os.getenv('IS_DEMO', 0))
+    TOURNAMENT_ID = int(os.getenv('TOURNAMENT_ID', 0))
+    WS_URL = os.getenv('WS_URL', 'wss://ws2.qxbroker.com/socket.io/?EIO=3&transport=websocket')
