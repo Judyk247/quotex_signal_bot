@@ -1,6 +1,11 @@
+# Add these new dependencies:
+websocket-client==1.6.1
+cloudscraper==1.2.71
+
+# Keep existing dependencies:
 pandas==1.5.3
 numpy==1.24.3
-websockets==11.0.3
+websockets==11.0.3  # Keep for now, remove if not used
 Flask==2.3.3
 Flask-SocketIO==5.3.6
 python-engineio==4.7.1
@@ -13,4 +18,4 @@ python-dotenv==1.0.0
 setuptools==68.2.2
 wheel==0.42.0
 typing-extensions==4.8.0
-ta==0.10.2  # Pure Python alternative
+ta==0.10.2
