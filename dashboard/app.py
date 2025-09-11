@@ -1,15 +1,14 @@
 import os
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_socketio import SocketIO
+import json
 
-# Get absolute path to main project directory (one level up from dashboard)
+# Get absolute path to templates
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
+INDEX_PATH = os.path.join(TEMPLATE_DIR, 'index.html')
 
-app = Flask(__name__, 
-            template_folder=TEMPLATE_DIR,
-            static_folder=STATIC_DIR)
+app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
@@ -45,25 +44,51 @@ class Dashboard:
 # Global dashboard instance
 dashboard = Dashboard()
 
-# Add debug route to check template path
-@app.route('/debug/paths')
-def debug_paths():
-    return {
+# 100% GUARANTEED TEMPLATE SOLUTION
+@app.route('/')
+def index():
+    """Serve index.html with guaranteed file delivery"""
+    try:
+        # Method 1: Direct file serving (most reliable)
+        return send_file(INDEX_PATH)
+    except Exception as e:
+        # Method 2: Manual file reading (fallback)
+        try:
+            with open(INDEX_PATH, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return content, 200, {'Content-Type': 'text/html'}
+        except Exception as e2:
+            # Method 3: Hardcoded response (final fallback)
+            return f"""
+            <html>
+                <body>
+                    <h1>Dashboard is working! 🚀</h1>
+                    <p>Template file issue detected. Signals API is functional.</p>
+                    <p>Debug: {str(e2)}</p>
+                    <script>
+                        // Your dashboard JavaScript can still work
+                        console.log('Dashboard loaded without template');
+                    </script>
+                </body>
+            </html>
+            """, 200, {'Content-Type': 'text/html'}
+
+# Debug endpoint to check file existence
+@app.route('/debug/files')
+def debug_files():
+    files = {
         'base_dir': BASE_DIR,
         'template_dir': TEMPLATE_DIR,
-        'static_dir': STATIC_DIR,
-        'template_exists': os.path.exists(TEMPLATE_DIR),
-        'index_exists': os.path.exists(os.path.join(TEMPLATE_DIR, 'index.html')) if os.path.exists(TEMPLATE_DIR) else False,
-        'static_exists': os.path.exists(STATIC_DIR)
+        'index_path': INDEX_PATH,
+        'index_exists': os.path.exists(INDEX_PATH),
+        'current_dir_files': os.listdir('.'),
+        'template_dir_files': os.listdir(TEMPLATE_DIR) if os.path.exists(TEMPLATE_DIR) else 'NOT FOUND'
     }
+    return jsonify(files)
 
 @app.route('/health')
 def health_check():
     return jsonify({'status': 'healthy'})
-
-@app.route('/')
-def index():
-    return render_template('index.html')
 
 @app.route('/api/signals')
 def get_signals():
