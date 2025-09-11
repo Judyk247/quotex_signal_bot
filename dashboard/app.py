@@ -1,8 +1,15 @@
+import os
 from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO
-import os
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
+# Get the absolute path to the dashboard directory
+dashboard_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(dashboard_dir, 'templates')
+static_dir = os.path.join(dashboard_dir, 'static')
+
+app = Flask(__name__, 
+            template_folder=template_dir,
+            static_folder=static_dir)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
