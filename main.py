@@ -8,9 +8,9 @@ from core.data_processor import DataProcessor
 from core.strategy_engine import StrategyEngine
 from utils.logger import setup_logger
 from config.settings import TRADING_SETTINGS
-from dashboard.app import dashboard, run_dashboard
+from dashboard.app import dashboard
 import threading
-import sys
+
 print(f"ACTUAL Python version: {sys.version}")
 
 logger = setup_logger('main')
@@ -27,9 +27,6 @@ class QuotexTradingBot:
         """Initialize the trading bot"""
         logger.info("Initializing Quotex Trading Bot...")
         
-        # Start dashboard in a separate thread
-        self.start_dashboard()
-        
         # Connect to WebSocket
         connected = await self.ws_client.connect()
         if not connected:
@@ -45,19 +42,6 @@ class QuotexTradingBot:
         self.running = True
         logger.info("Trading bot initialized successfully")
         return True
-    
-    def start_dashboard(self):
-        """Start the dashboard in a separate thread"""
-        def run_dashboard_thread():
-            try:
-                from dashboard.app import run_dashboard
-                run_dashboard()
-            except Exception as e:
-                logger.error(f"Dashboard error: {e}")
-        
-        self.dashboard_thread = threading.Thread(target=run_dashboard_thread, daemon=True)
-        self.dashboard_thread.start()
-        logger.info("Dashboard started on http://localhost:5000")
     
     async def run(self):
         """Main trading bot loop"""
@@ -80,7 +64,7 @@ class QuotexTradingBot:
                     # Send signal to dashboard
                     if signal and signal.get('signal') != 'hold':
                         dashboard.add_signal(signal)
-                        logger.info(f"New signal sent to dashboard: {signal}")
+                        logger.info(f"New signal: {signal}")
             
             # Cleanup
             keep_alive_task.cancel()
@@ -99,39 +83,43 @@ class QuotexTradingBot:
         self.running = False
         await self.ws_client.disconnect()
 
-async def main():
-    """Main function"""
-    bot = QuotexTradingBot()
-    
-    # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
-        logger.info("Received shutdown signal")
-        asyncio.create_task(bot.shutdown())
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    # Initialize and run the bot
-    if await bot.initialize():
-        try:
-            await bot.run()
-        except Exception as e:
-            logger.error(f"Fatal error: {e}")
-    else:
-        logger.error("Failed to initialize bot")
-    
-    logger.info("Trading bot stopped")
+# Create bot instance
+bot = QuotexTradingBot()
 
+def run_bot():
+    """Run the trading bot in background"""
+    async def bot_main():
+        if await bot.initialize():
+            await bot.run()
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(bot_main())
+
+# ===== RENDER DEPLOYMENT SETUP =====
+# Import your Flask app from dashboard
+from dashboard.app import app
+
+# Export for Gunicorn - Render will automatically find this
+application = app
+
+# Start bot when app starts (for Render)
+@app.before_first_request
+def start_bot_background():
+    """Start bot when Flask app starts"""
+    if not bot.running:
+        bot_thread = threading.Thread(target=run_bot, daemon=True)
+        bot_thread.start()
+        logger.info("Trading bot started in background thread")
+
+# For local testing (optional)
 if __name__ == "__main__":
     # Check if credentials are set
     from config.credentials import Credentials
     if not Credentials.SESSION_ID:
-        print("ERROR: SESSION_ID not found in environment variables or .env file")
-        print("Please create a .env file with your Quotex credentials:")
-        print("SESSION_ID=your_session_id_here")
-        print("IS_DEMO=0")
-        print("TOURNAMENT_ID=0")
+        print("ERROR: SESSION_ID not found in environment variables")
+        print("Please set SESSION_ID in environment variables")
         sys.exit(1)
     
-    # Run the bot
+    # Start the bot directly for local testing
     asyncio.run(main())
