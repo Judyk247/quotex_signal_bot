@@ -10,6 +10,8 @@ from utils.logger import setup_logger
 from config.settings import TRADING_SETTINGS
 from dashboard.app import dashboard, run_dashboard
 import threading
+import sys
+print(f"ACTUAL Python version: {sys.version}")
 
 logger = setup_logger('main')
 
