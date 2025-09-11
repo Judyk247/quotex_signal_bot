@@ -1,7 +1,34 @@
 import pandas as pd
 import numpy as np
-import talib
 from typing import Dict, Any
+
+# Try to import TA-Lib, fallback to pure Python implementations
+try:
+    import talib
+    HAS_TALIB = True
+except ImportError:
+    HAS_TALIB = False
+    # Pure Python technical analysis implementations
+    def calculate_sma(series, period):
+        return series.rolling(window=period).mean()
+
+    def calculate_ema(series, period):
+        return series.ewm(span=period, adjust=False).mean()
+
+    def calculate_stochastic(high, low, close, fastk_period=14, slowk_period=3, slowd_period=3):
+        lowest_low = low.rolling(window=fastk_period).min()
+        highest_high = high.rolling(window=fastk_period).max()
+        
+        stoch_k = 100 * (close - lowest_low) / (highest_high - lowest_low)
+        stoch_d = stoch_k.rolling(window=slowk_period).mean()
+        
+        return stoch_k, stoch_d
+
+    def calculate_atr(high, low, close, period=14):
+        tr = np.maximum(high - low, 
+                       np.maximum(abs(high - close.shift()), 
+                                 abs(low - close.shift())))
+        return tr.rolling(window=period).mean()
 
 class TrendReversalStrategy:
     def __init__(self, timeframe='5m'):
@@ -13,26 +40,42 @@ class TrendReversalStrategy:
         df = data.copy()
         
         # Alligator Indicator
-        df['jaw'] = talib.SMA(df['close'], timeperiod=15)
-        df['teeth'] = talib.SMA(df['close'], timeperiod=8)
-        df['lips'] = talib.SMA(df['close'], timeperiod=5)
+        if HAS_TALIB:
+            df['jaw'] = talib.SMA(df['close'], timeperiod=15)
+            df['teeth'] = talib.SMA(df['close'], timeperiod=8)
+            df['lips'] = talib.SMA(df['close'], timeperiod=5)
+        else:
+            df['jaw'] = calculate_sma(df['close'], 15)
+            df['teeth'] = calculate_sma(df['close'], 8)
+            df['lips'] = calculate_sma(df['close'], 5)
         
         # EMA-150
-        df['ema_150'] = talib.EMA(df['close'], timeperiod=150)
+        if HAS_TALIB:
+            df['ema_150'] = talib.EMA(df['close'], timeperiod=150)
+        else:
+            df['ema_150'] = calculate_ema(df['close'], 150)
         
         # Stochastic Oscillator
-        df['stoch_k'], df['stoch_d'] = talib.STOCH(
-            df['high'], df['low'], df['close'],
-            fastk_period=14, slowk_period=3, slowk_matype=0, 
-            slowd_period=3, slowd_matype=0
-        )
+        if HAS_TALIB:
+            df['stoch_k'], df['stoch_d'] = talib.STOCH(
+                df['high'], df['low'], df['close'],
+                fastk_period=14, slowk_period=3, slowk_matype=0, 
+                slowd_period=3, slowd_matype=0
+            )
+        else:
+            df['stoch_k'], df['stoch_d'] = calculate_stochastic(
+                df['high'], df['low'], df['close'], 14, 3, 3
+            )
         
         # Fractals
         df['fractal_high'] = self._calculate_fractals(df, 'high')
         df['fractal_low'] = self._calculate_fractals(df, 'low')
         
         # ATR for volatility
-        df['atr_14'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
+        if HAS_TALIB:
+            df['atr_14'] = talib.ATR(df['high'], df['low'], df['close'], timeperiod=14)
+        else:
+            df['atr_14'] = calculate_atr(df['high'], df['low'], df['close'], 14)
         
         # Median ATR for volatility filter
         lookback = 10
