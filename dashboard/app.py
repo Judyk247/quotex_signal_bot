@@ -2,8 +2,8 @@ import os
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 
-# Get absolute paths to fix template issues
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Get absolute path to main project directory (one level up from dashboard)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
