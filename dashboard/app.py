@@ -1,15 +1,15 @@
 import os
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO
 
-# Get the absolute path to the dashboard directory
-dashboard_dir = os.path.dirname(os.path.abspath(__file__))
-template_dir = os.path.join(dashboard_dir, 'templates')
-static_dir = os.path.join(dashboard_dir, 'static')
+# Get absolute paths to fix template issues
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
 app = Flask(__name__, 
-            template_folder=template_dir,
-            static_folder=static_dir)
+            template_folder=TEMPLATE_DIR,
+            static_folder=STATIC_DIR)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_secret_key')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
@@ -44,6 +44,22 @@ class Dashboard:
 
 # Global dashboard instance
 dashboard = Dashboard()
+
+# Add debug route to check template path
+@app.route('/debug/paths')
+def debug_paths():
+    return {
+        'base_dir': BASE_DIR,
+        'template_dir': TEMPLATE_DIR,
+        'static_dir': STATIC_DIR,
+        'template_exists': os.path.exists(TEMPLATE_DIR),
+        'index_exists': os.path.exists(os.path.join(TEMPLATE_DIR, 'index.html')) if os.path.exists(TEMPLATE_DIR) else False,
+        'static_exists': os.path.exists(STATIC_DIR)
+    }
+
+@app.route('/health')
+def health_check():
+    return jsonify({'status': 'healthy'})
 
 @app.route('/')
 def index():
