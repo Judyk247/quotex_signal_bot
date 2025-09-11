@@ -17,11 +17,16 @@ class QuotexWebSocketClient:
         
     async def connect(self):
         try:
+            # Validate credentials first
+            if not Credentials.SESSION_ID:
+                logger.error("No SESSION_ID provided")
+                return False
+                
             self.ws = await websockets.connect(Credentials.WS_URL)
             self.connected = True
             logger.info("Connected to Quotex WebSocket")
             
-            # Send initial handshake
+            # Send handshake
             await self.send('0{"sid":"dPM2e_Q_YtY46okiLc8u","upgrades":[],"pingInterval":25000,"pingTimeout":5000}')
             await self.send('40')
             
@@ -33,15 +38,25 @@ class QuotexWebSocketClient:
             }
             await self.send(f'42["authorization",{json.dumps(auth_data)}]')
             
-            # Request instruments list
-            await self.send('451-["instruments/list",{"_placeholder":true,"num":0}]')
-            
+            # Wait for authentication response
+            response = await self.ws.recv()
+            if "unauthorized" in response.lower() or "403" in response:
+                logger.error("Authentication failed! Check your SESSION_ID")
+                await self.disconnect()
+                return False
+                
+            logger.info("Successfully authenticated with Quotex")
             return True
             
         except Exception as e:
             logger.error(f"Connection error: {e}")
+            if "403" in str(e) or "forbidden" in str(e).lower():
+                logger.error("❌ QUOTEX REJECTED CONNECTION! Please check:")
+                logger.error("1. Your SESSION_ID is fresh (expires every 24-48h)")
+                logger.error("2. Your account is not restricted")
+                logger.error("3. You're using correct DEMO/REAL account setting")
             return False
-    
+        
     async def send(self, message):
         if self.ws and self.connected:
             try:
@@ -50,7 +65,7 @@ class QuotexWebSocketClient:
             except Exception as e:
                 logger.error(f"Send error: {e}")
                 self.connected = False
-    
+        
     async def receive(self):
         while self.connected:
             try:
@@ -61,7 +76,7 @@ class QuotexWebSocketClient:
                 logger.error(f"Receive error: {e}")
                 self.connected = False
                 break
-    
+        
     async def keep_alive(self):
         while self.connected:
             try:
@@ -71,7 +86,7 @@ class QuotexWebSocketClient:
                 logger.error(f"Keep alive error: {e}")
                 self.connected = False
                 break
-    
+        
     async def subscribe_to_asset(self, asset, timeframe):
         subscribe_msg = f'42["instruments/update",{{"asset":"{asset}","period":{self._timeframe_to_seconds(timeframe)}}}]'
         await self.send(subscribe_msg)
