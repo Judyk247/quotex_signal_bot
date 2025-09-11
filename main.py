@@ -1,17 +1,15 @@
 import asyncio
-import json
 import signal
 import sys
-from datetime import datetime
+import threading
 from core.websocket_client import QuotexWebSocketClient
 from core.data_processor import DataProcessor
 from core.strategy_engine import StrategyEngine
 from utils.logger import setup_logger
 from config.settings import TRADING_SETTINGS
 from dashboard.app import dashboard
-import threading
 
-print(f"ACTUAL Python version: {sys.version}")
+print(f"Python version: {sys.version}")
 
 logger = setup_logger('main')
 
@@ -21,7 +19,6 @@ class QuotexTradingBot:
         self.data_processor = DataProcessor()
         self.strategy_engine = StrategyEngine(self.data_processor)
         self.running = False
-        self.dashboard_thread = None
         
     async def initialize(self):
         """Initialize the trading bot"""
@@ -37,7 +34,7 @@ class QuotexTradingBot:
         for asset in TRADING_SETTINGS['assets']:
             for timeframe in TRADING_SETTINGS['timeframes']:
                 await self.ws_client.subscribe_to_asset(asset, timeframe)
-                await asyncio.sleep(0.1)  # Small delay between subscriptions
+                await asyncio.sleep(0.1)
         
         self.running = True
         logger.info("Trading bot initialized successfully")
@@ -54,19 +51,15 @@ class QuotexTradingBot:
                 if not self.running:
                     break
                     
-                # Process the message
                 processed_data = self.data_processor.process_message(message)
                 
                 if processed_data:
-                    # Run strategies on the processed data
                     signal = await self.strategy_engine.process_data(processed_data)
                     
-                    # Send signal to dashboard
                     if signal and signal.get('signal') != 'hold':
                         dashboard.add_signal(signal)
-                        logger.info(f"New signal: {signal}")
+                        logger.info(f"New trading signal: {signal}")
             
-            # Cleanup
             keep_alive_task.cancel()
             await self.ws_client.disconnect()
             
@@ -103,23 +96,19 @@ from dashboard.app import app
 # Export for Gunicorn - Render will automatically find this
 application = app
 
-# Start bot when app starts (for Render)
-@app.before_first_request
-def start_bot_background():
-    """Start bot when Flask app starts"""
-    if not bot.running:
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
-        logger.info("Trading bot started in background thread")
+# Start bot immediately when module loads (Production)
+if not bot.running:
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    logger.info("Trading bot started in background thread")
 
-# For local testing (optional)
-if __name__ == "__main__":
-    # Check if credentials are set
-    from config.credentials import Credentials
-    if not Credentials.SESSION_ID:
-        print("ERROR: SESSION_ID not found in environment variables")
-        print("Please set SESSION_ID in environment variables")
-        sys.exit(1)
-    
-    # Start the bot directly for local testing
-    asyncio.run(main())
+# Clean shutdown handling for production
+def handle_shutdown(signum, frame):
+    """Handle graceful shutdown"""
+    logger.info("Received shutdown signal")
+    async def shutdown_async():
+        await bot.shutdown()
+    asyncio.run(shutdown_async())
+
+signal.signal(signal.SIGTERM, handle_shutdown)
+signal.signal(signal.SIGINT, handle_shutdown)
