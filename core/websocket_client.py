@@ -10,14 +10,6 @@ from utils.logger import setup_logger
 
 logger = setup_logger('websocket_client')
 
-# Try to import cloudscraper
-try:
-    import cloudscraper
-    CLOUDSCRAPER_AVAILABLE = True
-except ImportError:
-    CLOUDSCRAPER_AVAILABLE = False
-    logger.warning("cloudscraper not installed. Run: pip install cloudscraper")
-
 class QuotexWebSocketClient:
     def __init__(self):
         self.ws = None
@@ -26,42 +18,17 @@ class QuotexWebSocketClient:
         self.ping_interval = 25000
         self.ping_timeout = 5000
         self.sid = None
-        self.cloudflare_cookies = ""
         self.message_count = 0
         self.on_message_callback = None  # Callback for processed messages
         
-    def bypass_cloudflare(self):
-        """Bypass Cloudflare protection using cloudscraper"""
-        if not CLOUDSCRAPER_AVAILABLE:
-            logger.error("cloudscraper not installed. Run: pip install cloudscraper")
-            return False
-
-        logger.info("Bypassing Cloudflare protection...")
-        try:
-            scraper = cloudscraper.create_scraper()
-            scraper.headers = {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
-
-            response = scraper.get('https://qxbroker.com', timeout=30)
-
-            if response.status_code == 200:
-                cookies_dict = scraper.cookies.get_dict()
-                self.cloudflare_cookies = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
-                logger.info("Cloudflare bypass successful!")
-                return True
-            else:
-                logger.error(f"Cloudflare bypass failed. Status: {response.status_code}")
-                return False
-
-        except Exception as e:
-            logger.error(f"Cloudflare bypass error: {e}")
-            return False
+    def get_manual_session_token(self):
+        """Get session token from user input (for Render environment)"""
+        # This function is now a placeholder. The actual SESSION_ID
+        # is provided via environment variables and the Credentials class.
+        # We validate it on connection instead of prompting in a server environment.
+        logger.info("🔐 Using manually provided SESSION_ID from environment variables")
+        # Credentials.validate() is called in main.py on startup
+        return Credentials.SESSION_ID
 
     def on_open(self, ws):
         logger.info("WebSocket connected")
@@ -87,7 +54,7 @@ class QuotexWebSocketClient:
             elif message == '40':
                 logger.info("Namespace connected, sending authentication")
                 auth_data = {
-                    "session": Credentials.SESSION_ID,
+                    "session": self.get_manual_session_token(), # Uses the validated SESSION_ID
                     "isDemo": Credentials.IS_DEMO,
                     "tournamentId": Credentials.TOURNAMENT_ID
                 }
@@ -152,32 +119,31 @@ class QuotexWebSocketClient:
         self.authenticated = False
 
     def connect(self):
-        """Connect to Quotex WebSocket with Cloudflare bypass"""
+        """Connect to Quotex WebSocket using manual session token"""
         try:
-            # First bypass Cloudflare
-            self.bypass_cloudflare()
+            # Validate credentials before attempting connection
+            Credentials.validate()
+            logger.info("Credentials validated. Proceeding with connection...")
 
             # Generate WebSocket key
             key = base64.b64encode(os.urandom(16)).decode('utf-8')
 
-            # Prepare headers with Cloudflare cookies
+            # Prepare headers - Focus on mimicking a browser, cookies are less critical now
+            # but we include them if we ever manage to get them via another method.
             headers = [
                 "Host: ws2.qxbroker.com",
                 "Connection: Upgrade",
                 "Pragma: no-cache",
                 "Cache-Control: no-cache",
-                "User-Agent: Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Upgrade: websocket",
                 "Origin: https://qxbroker.com",
                 "Sec-WebSocket-Version: 13",
-                "Accept-Encoding: gzip, deflate, br, zstd",
+                "Accept-Encoding: gzip, deflate, br",
                 "Accept-Language: en-US,en;q=0.9",
                 f"Sec-WebSocket-Key: {key}",
                 "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits"
             ]
-
-            if self.cloudflare_cookies:
-                headers.append(f"Cookie: {self.cloudflare_cookies}")
 
             # Create WebSocket connection
             self.ws = websocket.WebSocketApp(
@@ -203,6 +169,10 @@ class QuotexWebSocketClient:
             logger.error("WebSocket connection timeout")
             return False
 
+        except ValueError as e:
+            # Catch the validation error from Credentials.validate()
+            logger.error(f"Credential validation failed: {e}")
+            return False
         except Exception as e:
             logger.error(f"Connection error: {e}")
             return False
