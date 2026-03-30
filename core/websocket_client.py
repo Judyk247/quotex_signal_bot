@@ -51,35 +51,22 @@ class QuotexWebSocketClient:
             Credentials.validate()
             logger.info("Credentials validated. Proceeding with connection...")
 
-            # Get session token - PRIORITIZE hardcoded or env
-            self.session_token = Credentials.SESSION_ID
-            if not self.session_token or self.session_token == "your_session_token_here":
-                # Hardcode your token temporarily if env not working
-                # Remove this line after env is fixed
-                self.session_token = "xgq9rwpdsFBD2deyugI1FhQnTPrdfWSOwfonxSZr"
-                logger.warning("Using hardcoded session token - remove after debugging")
+            # --- HARDCODED SESSION TOKEN (replace with your current token if needed) ---
+            self.session_token = "xgq9rwpdsFBD2deyugI1FhQnTPrdfWSOwfonxSZr"
+            logger.info(f"Using hardcoded session token (length: {len(self.session_token)})")
             
-            if not self.session_token:
-                logger.warning("No SESSION_ID, attempting HTTP login...")
-                self.session_token = self._get_session_via_http()
-                if not self.session_token:
-                    logger.error("Failed to obtain session token")
-                    return False
+            # If the hardcoded token fails, uncomment the line below to try env var or HTTP login
+            # if not self.session_token:
+            #     self.session_token = Credentials.SESSION_ID
+            #     if not self.session_token:
+            #         logger.warning("No SESSION_ID, attempting HTTP login...")
+            #         self.session_token = self._get_session_via_http()
+            #         if not self.session_token:
+            #             logger.error("Failed to obtain session token")
+            #             return False
 
-            logger.info(f"Session token loaded (length: {len(self.session_token)})")
-
-            # Construct the base URL correctly for Socket.IO
-            base_url = Credentials.WS_URL if hasattr(Credentials, 'WS_URL') else "https://ws2.qxbroker.com"
-            # Remove any path like /socket.io/ and ensure https://
-            if '/socket.io' in base_url:
-                base_url = base_url.split('/socket.io')[0]
-            if base_url.startswith('wss://'):
-                base_url = base_url.replace('wss://', 'https://')
-            if not base_url.startswith('http'):
-                base_url = 'https://' + base_url
-            # Remove trailing slash
-            base_url = base_url.rstrip('/')
-            
+            # --- HARDCODED WEBSOCKET URL (bypass env vars completely) ---
+            base_url = "https://ws2.qxbroker.com"
             logger.info(f"Connecting to Socket.IO server at {base_url}")
 
             # Create Socket.IO client with detailed logging
@@ -127,7 +114,6 @@ class QuotexWebSocketClient:
                     self.subscribe_to_assets()
                 else:
                     logger.error(f"Authentication failed: {data}")
-                    # If auth fails, token might be invalid
                     self.disconnect()
 
             @self.sio.on('tick')
@@ -145,7 +131,7 @@ class QuotexWebSocketClient:
                 if self.on_message_callback:
                     self.on_message_callback(json.dumps([event, data]))
 
-            # Attempt connection with timeout
+            # Connect with timeout
             self.sio.connect(
                 base_url,
                 transports=['websocket', 'polling'],
