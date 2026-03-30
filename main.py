@@ -7,7 +7,6 @@ from core.data_processor import DataProcessor
 from core.strategy_engine import StrategyEngine
 from utils.logger import setup_logger
 from config.settings import TRADING_SETTINGS
-from dashboard.app import dashboard
 
 print(f"Python version: {sys.version}")
 
@@ -77,13 +76,30 @@ class QuotexTradingBot:
 # Create bot instance
 bot = QuotexTradingBot()
 
+# ===== FIX: Define callback and assign BEFORE starting bot =====
+def process_websocket_message(message):
+    """Callback function for WebSocket messages"""
+    try:
+        processed_data = bot.data_processor.process_message(message)
+        if processed_data:
+            signal = bot.strategy_engine.process_data(processed_data)
+            if signal and signal.get('signal') != 'hold':
+                # Import here to avoid circular import
+                from dashboard.app import dashboard
+                dashboard.add_signal(signal)
+                logger.info(f"New trading signal: {signal}")
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+
+# Set the callback in the WebSocket client (BEFORE starting bot)
+bot.ws_client.on_message_callback = process_websocket_message
+
 def run_bot():
     """Run the trading bot in background"""
     if bot.initialize():
         bot.run()
 
 # ===== RENDER DEPLOYMENT SETUP =====
-# Import your Flask app from dashboard
 from dashboard.app import app
 
 # Export for Gunicorn - Render will automatically find this
@@ -103,19 +119,3 @@ def handle_shutdown(signum, frame):
 
 signal.signal(signal.SIGTERM, handle_shutdown)
 signal.signal(signal.SIGINT, handle_shutdown)
-
-# For WebSocket message processing - add this to your DataProcessor
-def process_websocket_message(message):
-    """Callback function for WebSocket messages"""
-    try:
-        processed_data = bot.data_processor.process_message(message)
-        if processed_data:
-            signal = bot.strategy_engine.process_data(processed_data)
-            if signal and signal.get('signal') != 'hold':
-                dashboard.add_signal(signal)
-                logger.info(f"New trading signal: {signal}")
-    except Exception as e:
-        logger.error(f"Error processing message: {e}")
-
-# Set the callback in the WebSocket client
-bot.ws_client.on_message_callback = process_websocket_message
